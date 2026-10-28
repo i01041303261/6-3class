@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>모노크롬: 열쇠 탈출</title>
+<style>
+:root{--bg:#f4f4f4;--ink:#171717;--panel:#fff;--muted:#666;--line:#d5d5d5;--dark:#202020}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Malgun Gothic",sans-serif}
+header{background:#171717;color:#fff;padding:22px 16px;text-align:center}h1{margin:0 0 6px;font-size:clamp(24px,5vw,36px);letter-spacing:2px}header p{margin:0;color:#ccc}
+main{max-width:980px;margin:auto;padding:18px}
+.status{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-bottom:18px}
+.pill{background:white;border:1px solid var(--line);border-radius:999px;padding:9px 14px;font-weight:700}
+.rooms{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px}
+.room{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;text-align:center;box-shadow:0 3px 10px #00000008}
+.room-icon{height:78px;display:grid;place-items:center;background:#ececec;border-radius:10px;font-size:42px;margin-bottom:10px}
+.room h2{font-size:18px;margin:6px 0}.room p{font-size:13px;color:var(--muted);min-height:32px;margin:5px 0 12px}
+button{border:0;border-radius:9px;background:var(--dark);color:white;font-weight:750;padding:12px 15px;cursor:pointer;font-size:15px}
+button:disabled{opacity:.4;cursor:not-allowed}.room button{width:100%}
+button.secondary{background:#e5e5e5;color:#171717;border:1px solid #ccc}
+.panel{background:white;border:1px solid var(--line);border-radius:16px;padding:18px;margin-top:18px}
+.hidden{display:none!important}.room-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.room-head h2{margin:0}.scene{margin:16px 0;padding:20px;border-radius:12px;background:#222;color:#fff;min-height:130px;text-align:center;display:flex;flex-direction:column;justify-content:center;gap:8px}
+.scene .big{font-size:42px}.scene p{margin:0;color:#ddd}
+.actions{display:flex;gap:10px;flex-wrap:wrap}.actions button{flex:1;min-width:130px}
+.drawer{border:1px dashed #aaa;border-radius:12px;padding:14px;margin:12px 0;display:flex;justify-content:space-between;align-items:center;gap:12px}
+.drawer strong{display:block}.drawer small{color:var(--muted)}
+.notice{padding:12px;border-radius:10px;background:#f0f0f0;margin-top:12px;min-height:46px}
+.notice.alert{background:#fff0f0;color:#8c1515}.notice.good{background:#eaffef;color:#12602b}
+.timer{font-size:24px;font-weight:900}.footer{text-align:center;color:#666;font-size:12px;padding:22px}
+#modal{position:fixed;inset:0;background:#0009;display:grid;place-items:center;padding:20px;z-index:5}
+.modalbox{max-width:420px;width:100%;background:#fff;padding:24px;border-radius:16px;text-align:center;box-shadow:0 10px 40px #0004}
+.modalbox h2{margin-top:0}.modalbox p{line-height:1.6}
+@media(max-width:420px){main{padding:12px}.panel{padding:14px}.room{padding:10px}}
+</style>
+</head>
+<body>
+<header><h1>모노크롬: 열쇠 탈출</h1><p>10개 방을 탐색하고, 랜덤으로 숨겨진 열쇠 5개를 모아 탈출하라.</p></header>
+<main>
+<div class="status">
+ <div class="pill">🔑 열쇠 <span id="keyCount">0</span>/<span id="keyTotal">5</span></div>
+ <div class="pill">🚪 방 <span id="roomCount">0</span>/5 탐색</div>
+ <div class="pill">👤 상태: <span id="stateText">안전</span></div>
+</div>
+<section id="mapView">
+ <div class="panel" style="margin-top:0">
+  <h2 style="margin-top:0">탐색할 방을 선택하세요</h2>
+  <p>들어가기 전에는 괴물이 나타나지 않습니다. 방에 들어가면 괴물이 접근하는 소리가 들릴 수 있어요. 서랍을 열어 열쇠를 찾고, 숨을 곳을 이용하세요.</p>
+ </div>
+ <div class="rooms" id="rooms"></div>
+ <div class="panel"><strong>탈출 준비</strong><p id="exitHint">열쇠를 모두 모으면 탈출 버튼이 활성화됩니다.</p><button id="exitBtn" disabled>🚪 탈출하기</button></div>
+</section>
+<section id="roomView" class="panel hidden">
+ <div class="room-head"><h2 id="roomTitle">방</h2><button class="secondary" id="backBtn">방 목록으로</button></div>
+ <div class="scene"><div class="big" id="sceneIcon">🚪</div><strong id="sceneTitle">방에 들어왔다.</strong><p id="sceneText">서랍을 조사해 보세요.</p></div>
+ <div id="drawerArea"></div>
+ <div class="actions">
+  <button id="hideBtn">🫥 숨기 (10초)</button>
+  <button id="leaveBtn" class="secondary">방에서 나가기</button>
+ </div>
+ <div class="notice" id="notice" role="status" aria-live="polite">서랍을 열어 열쇠를 찾아보세요.</div>
+ <div id="hideStatus" class="notice hidden"><span class="timer" id="timer">10</span>초 동안 숨는 중…</div>
+</section>
+<div class="footer">힌트: 괴물이 접근하면 숨기 버튼을 누르세요. 숨기는 데 성공하면 괴물이 떠납니다.</div>
+</main>
+<div id="modal" class="hidden" role="dialog" aria-modal="true"><div class="modalbox"><h2 id="modalTitle">안내</h2><p id="modalText"></p><button id="modalBtn">확인</button></div></div>
+<script>
+(() => {
+ const TOTAL=5, ROOM_NAMES=Array.from({length:10},(_,i)=>`방 ${i+1}`);
+ let keys=0, visited=new Set(), current=null, monsterTimer=null, hideInterval=null, hideUntil=0, drawerUnlockTimer=null;
+ let monsterActive=false, hiddenNow=false, gameOver=false, rooms=[], audioCtx=null;
+ const $=id=>document.getElementById(id);
+ function sound(type){
+   try{
+    audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();
+    if(audioCtx.state==='suspended') audioCtx.resume();
+    const now=audioCtx.currentTime;
+    const play=(freq,dur,vol,wave='sine',delay=0)=>{
+      const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+      o.type=wave;o.frequency.setValueAtTime(freq,now+delay);
+      g.gain.setValueAtTime(.0001,now+delay);g.gain.exponentialRampToValueAtTime(vol,now+delay+.025);
+      g.gain.exponentialRampToValueAtTime(.0001,now+delay+dur);
+      o.connect(g);g.connect(audioCtx.destination);o.start(now+delay);o.stop(now+delay+dur+.03);
+    };
+    if(type==='approach'){play(95,.35,.13,'sawtooth');play(72,.45,.10,'triangle',.38);play(58,.6,.12,'sawtooth',.82);}
+    if(type==='key'){play(880,.12,.09);play(1175,.22,.08,'sine',.12);}
+    if(type==='hide'){play(330,.15,.08);play(220,.2,.07,'triangle',.15);}
+    if(type==='safe'){play(523,.18,.08);play(659,.18,.08,'sine',.18);play(784,.3,.08,'sine',.36);}
+    if(type==='caught'){play(150,.55,.16,'sawtooth');play(85,.7,.16,'square',.25);}
+    if(type==='open'){play(260,.08,.04,'triangle');}
+   }catch(e){}
+ }
+ function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a}
+ function initRooms(){
+   // At the start of every game, randomly place five keys in five distinct rooms out of ten.
+   const keyRooms=new Set(shuffle(Array.from({length:ROOM_NAMES.length},(_,i)=>i)).slice(0,TOTAL));
+   rooms=ROOM_NAMES.map((name,i)=>({name,index:i,hasKey:keyRooms.has(i),found:false,drawers:[{open:false},{open:false}],explored:false}));
+   // Each key-bearing room gets a random drawer; rooms without keys have empty drawers.
+   rooms.forEach(r=>{r.keyDrawer=r.hasKey?Math.floor(Math.random()*r.drawers.length):-1;});
+ }
+ function renderRooms(){
+   $('rooms').innerHTML='';
+   rooms.forEach(r=>{
+    const card=document.createElement('div');card.className='room';
+    const icon=r.explored?'🗄️':'🚪';
+    const status=r.found?'열쇠 획득 완료':r.explored?'탐색 완료':'아직 탐색하지 않음';
+    card.innerHTML=`<div class="room-icon">${icon}</div><h2>${r.name}</h2><p>${status}</p><button ${r.found?'disabled':''} data-room="${r.index}">${r.found?'열쇠 획득 완료':r.explored?'다시 들어가기':'들어가기'}</button>`;
+    const btn=card.querySelector('button');btn.addEventListener('click',()=>enterRoom(r.index));
+    $('rooms').appendChild(card);
+   });
+   $('keyCount').textContent=keys;$('keyTotal').textContent=TOTAL;$('roomCount').textContent=visited.size;
+   $('exitBtn').disabled=keys<TOTAL||gameOver;
+   $('exitHint').textContent=keys===TOTAL?'열쇠를 모두 모았습니다! 이제 탈출할 수 있습니다.':`열쇠 ${TOTAL-keys}개가 더 필요합니다.`;
+ }
+ function setNotice(text,kind=''){const n=$('notice');n.textContent=text;n.className='notice'+(kind?' '+kind:'');}
+ function showModal(title,text,buttonText,callback){
+   $('modalTitle').textContent=title;$('modalText').textContent=text;$('modalBtn').textContent=buttonText;
+   $('modal').classList.remove('hidden');$('modalBtn').onclick=()=>{$('modal').classList.add('hidden');if(callback)callback();};
+ }
+ function stopMonster(){clearTimeout(monsterTimer);clearInterval(monsterTimer);monsterTimer=null;monsterActive=false;$('stateText').textContent=hiddenNow?'숨는 중':'안전';}
+ function endHide(){
+   clearInterval(hideInterval);hideInterval=null;hiddenNow=false;
+   $('hideStatus').classList.add('hidden');$('hideBtn').disabled=false;
+   if(!gameOver){stopMonster();$('stateText').textContent='안전';$('sceneIcon').textContent='🫥';$('sceneTitle').textContent='괴물이 지나갔다';$('sceneText').textContent='안전해졌습니다. 계속 탐색하세요.';setNotice('숨기에 성공했어요! 괴물이 떠났습니다.','good');sound('safe');}
+ }
+ function caught(){
+   gameOver=true;stopMonster();clearInterval(hideInterval);hideInterval=null;hiddenNow=false;
+   $('stateText').textContent='발견됨';$('hideStatus').classList.add('hidden');
+   sound('caught');
+   showModal('괴물에게 잡혔어요!', '이번 탐험은 실패했습니다. 열쇠와 방 배치는 새로 섞여 다시 시작됩니다.','다시 시작',restart);
+ }
+ function beginMonster(){
+   monsterActive=true;$('stateText').textContent='위험!';$('sceneIcon').textContent='👤';$('sceneTitle').textContent='모노크롬이 다가온다…';$('sceneText').textContent='발소리가 들립니다! 10초 안에 숨으세요.';setNotice('⚠️ 모노크롬 접근 중! 지금 숨기 버튼을 누르세요.','alert');sound('approach');
+   let left=10;$('timer').textContent=left;$('hideBtn').disabled=false;
+   monsterTimer=setInterval(()=>{left--;if(left>=0)$('timer').textContent=left;if(left<=0){clearInterval(monsterTimer);monsterTimer=null;if(monsterActive&&!hiddenNow) caught();}},1000);
+ }
+ function enterRoom(index){
+   if(gameOver)return;
+   current=rooms[index];visited.add(index);current.explored=true;
+   $('mapView').classList.add('hidden');$('roomView').classList.remove('hidden');
+   $('roomTitle').textContent=current.name;$('sceneIcon').textContent='🗄️';$('sceneTitle').textContent=current.name+'에 들어왔습니다';$('sceneText').textContent='서랍을 조사해 열쇠를 찾으세요.';
+   $('drawerArea').innerHTML='';
+   current.drawers.forEach((d,j)=>{
+     const div=document.createElement('div');div.className='drawer';
+     const info=document.createElement('div');info.innerHTML=`<strong>서랍 ${j+1}</strong><small>${d.open?'이미 열어 봄':'안에 무엇이 있을까?'}</small>`;
+     const btn=document.createElement('button');btn.className=d.open?'secondary':'';
+     btn.textContent=d.open?'열어 봄':'서랍 열기';btn.disabled=true;
+     btn.onclick=()=>openDrawer(j,div,btn,info);
+     div.append(info,btn);$('drawerArea').appendChild(div);
+   });
+   $('hideBtn').disabled=false;$('hideStatus').classList.add('hidden');setNotice('서랍 잠금 중… 3초 후에 열 수 있습니다. 괴물이 접근하면 10초 안에 숨으세요.');
+   renderRooms();sound('open');
+   // 방에 들어간 뒤 3초 동안 서랍을 잠근다.
+   clearTimeout(drawerUnlockTimer);
+   const enteredRoom=current;
+   drawerUnlockTimer=setTimeout(()=>{
+     if(current===enteredRoom&&!gameOver&&!$('roomView').classList.contains('hidden')){
+       [...$('drawerArea').querySelectorAll('.drawer')].forEach((drawer,j)=>{
+         const btn=drawer.querySelector('button');
+         if(btn&&!enteredRoom.drawers[j].open&&!enteredRoom.found)btn.disabled=false;
+       });
+       setNotice('🔓 서랍 잠금 해제! 이제 서랍을 열 수 있습니다.');
+     }
+     drawerUnlockTimer=null;
+   },3000);
+   // 괴물 출현 시간은 기존 설정인 입장 후 1초를 유지한다.
+   const approachDelay=1000;
+   monsterTimer=setTimeout(()=>{if(current&&!gameOver&&$('roomView').classList.contains('hidden')===false&&!hiddenNow)beginMonster();},approachDelay);
+ }
+ function openDrawer(j,div,btn,info){
+   if(!current||gameOver||hiddenNow)return;
+   current.drawers[j].open=true;btn.disabled=true;btn.textContent='열어 봄';btn.className='secondary';
+   info.querySelector('small').textContent='서랍을 열었습니다.';
+   if(current.hasKey&&!current.found&&j===current.keyDrawer){
+     current.found=true;keys++;sound('key');
+     info.querySelector('small').textContent='✨ 열쇠를 찾았습니다!';
+     setNotice(`🔑 열쇠 획득! 이제 열쇠가 ${TOTAL-keys}개 남았습니다.`, 'good');
+     showModal('열쇠 획득!',`열쇠를 찾았습니다! 이제 ${TOTAL-keys}개 남았습니다.`, '계속하기');
+     // disable all drawer buttons after collecting this room's key
+     [...$('drawerArea').querySelectorAll('button')].forEach(b=>b.disabled=true);
+     renderRooms();
+   }else{
+     info.querySelector('small').textContent='비어 있습니다.';
+     setNotice('이 서랍은 비어 있어요. 다른 서랍을 확인해 보세요.');
+   }
+ }
+ function hide(){
+   if(gameOver||hiddenNow||!current)return;
+   sound('hide');hiddenNow=true;$('hideBtn').disabled=true;$('stateText').textContent='숨는 중';
+   $('sceneIcon').textContent='🫥';$('sceneTitle').textContent='숨었습니다!';$('sceneText').textContent='움직이지 말고 10초 동안 기다리세요.';
+   $('hideStatus').classList.remove('hidden');$('timer').textContent='10';setNotice('숨는 중… 10초가 지나면 괴물이 떠납니다.','good');
+   // Hiding works whether the monster has just appeared or is approaching.
+   clearTimeout(monsterTimer);clearInterval(monsterTimer);monsterTimer=null;
+   let left=10;
+   hideInterval=setInterval(()=>{left--;$('timer').textContent=left;if(left<=0)endHide();},1000);
+ }
+ function leaveRoom(){
+   if(gameOver)return;
+   if(hiddenNow){setNotice('숨는 중에는 움직일 수 없습니다. 10초를 기다리세요.','alert');return;}
+   clearTimeout(monsterTimer);clearTimeout(drawerUnlockTimer);drawerUnlockTimer=null;monsterTimer=null;stopMonster();current=null;
+   $('roomView').classList.add('hidden');$('mapView').classList.remove('hidden');renderRooms();
+ }
+ function restart(){
+   keys=0;visited=new Set();current=null;monsterActive=false;hiddenNow=false;gameOver=false;
+   clearTimeout(monsterTimer);clearTimeout(drawerUnlockTimer);clearInterval(hideInterval);drawerUnlockTimer=null;monsterTimer=null;hideInterval=null;
+   $('roomView').classList.add('hidden');$('mapView').classList.remove('hidden');$('stateText').textContent='안전';
+   initRooms();renderRooms();
+ }
+ $('hideBtn').addEventListener('click',hide);$('leaveBtn').addEventListener('click',leaveRoom);$('backBtn').addEventListener('click',leaveRoom);
+ $('exitBtn').addEventListener('click',()=>{
+   if(keys<TOTAL||gameOver)return;
+   sound('safe');gameOver=true;
+   showModal('탈출 성공!','모든 열쇠를 모아 모노크롬의 집에서 탈출했습니다! 축하합니다.','다시 플레이',restart);
+ });
+ initRooms();renderRooms();
+})();
+</script>
+</body>
+</html>
